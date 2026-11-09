@@ -126,6 +126,34 @@ class DrafterReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "inventoried"):
             hf.verify(self.root, m, "coreai")
 
+    def test_body_only_drafter_inventory_uses_target_head(self):
+        import shutil
+        shutil.rmtree(self.directory)
+        self.pkg = self.root / "drafter" / hf.BODY_ONLY_DRAFTER
+        self.directory = self.pkg.parent
+        self.pkg.mkdir(parents=True)
+        (self.pkg / "resources.bin").write_bytes(b"body-only DFlash2 asset")
+        # built beside another target: a body-only package carries no target weights, so the pairing allows it
+        self.meta.update(target_export="release_other", head_export=None,
+                         entries={"draft": {"outputs": ["hidden"]}, "ctx64": {}})
+        self.write_metadata()
+        self.selector()
+        (self.directory / hf.HEAD_NORM_FILE).write_bytes(b"target head norm gain")
+        with contextlib.redirect_stderr(io.StringIO()):
+            m = self.manifest()
+            d = m["drafter"]
+            self.assertEqual((d["path"], d["model"], d["metadata"], d["head_export"], d["head_norm"]),
+                             ("drafter/all3", "dflash2_lut4_gptq_nohead.aimodel", "dflash2_lut4_gptq_nohead.json",
+                              None, hf.HEAD_NORM_FILE))
+            hf.verify(self.root, m, "coreai")
+        bad = copy.deepcopy(m)
+        del bad["drafter"]["head_norm"]
+        with self.assertRaisesRegex(ValueError, "body-only"):
+            hf.validate_manifest(bad)
+        (self.root / "drafter" / "stray.json").write_text("{}")
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaisesRegex(ValueError, "outside its component"):
+            self.manifest()
+
     def test_download_selects_drafter_by_default_and_can_omit_for_plain(self):
         m = self.manifest()
         for plain in (False, True):

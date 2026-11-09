@@ -17,6 +17,7 @@ MANIFEST = "release.json"
 DEFAULT_REPO = "anemll/anemll-forge-qwen3.8-27B"
 DEFAULT_DRAFTER = "dflash2_lut4_gptq.aimodel"
 BODY_ONLY_DRAFTER = "all3/dflash2_lut4_gptq_nohead.aimodel"   # qualityup default when the bundle has it
+HEAD_NORM_FILE = "head_normw_fp16.npy"   # a body-only drafter's copy of the target head's norm gain
 SELECTOR_FILE = "selector.safetensors"
 SELECTOR_KEYS = ("candidate_selector.predecessor_codebook", "candidate_selector.successor_codebook")
 ROOT_DOCUMENTS = {"README.md", "LICENSE", "NOTICE", "MODIFICATIONS.md", "QWEN_SOURCE.json"}
@@ -109,13 +110,18 @@ def validate_manifest(m):
         roots["drafter"] = str(relative(d.get("path")))
         for key in ("model", "metadata", "config", "codebooks"):
             relative(d.get(key))
-        if d["model"] != DEFAULT_DRAFTER or d["metadata"] != Path(DEFAULT_DRAFTER).with_suffix(".json").as_posix():
-            raise ValueError("Release must use the tested dflash2_lut4_gptq.aimodel and matching sidecar")
+        body_only = d["model"] == Path(BODY_ONLY_DRAFTER).name
+        if (d["model"] not in (DEFAULT_DRAFTER, Path(BODY_ONLY_DRAFTER).name)
+                or d["metadata"] != Path(d["model"]).with_suffix(".json").as_posix()):
+            raise ValueError("Release must use the tested dflash2_lut4_gptq.aimodel (or its body-only "
+                             "dflash2_lut4_gptq_nohead.aimodel) and matching sidecar")
         if d["config"] != "config.json" or d["codebooks"] != SELECTOR_FILE:
             raise ValueError("Drafter requires config.json and compact selector.safetensors")
-        for key in ("target_export", "head_export"):
+        for key in ("target_export",) + (() if body_only else ("head_export",)):
             if len(relative(d.get(key)).parts) != 1:
                 raise ValueError("Drafter target/head identities must be export names")
+        if body_only and (d.get("head_export") is not None or d.get("head_norm") != HEAD_NORM_FILE):
+            raise ValueError(f"A body-only drafter drafts with the target's head: head_export null, head_norm {HEAD_NORM_FILE}")
         taps = d.get("taps")
         if not isinstance(taps, list) or not taps or any(type(i) is not int or not 0 <= i < 64 for i in taps):
             raise ValueError("Invalid drafter target taps")
@@ -164,7 +170,7 @@ def validate_manifest(m):
             raise ValueError(f"No runtime files: {runtime}")
     if "drafter" in roots:
         d = m["drafter"]
-        for key in ("metadata", "config", "codebooks"):
+        for key in ("metadata", "config", "codebooks") + (("head_norm",) if d.get("head_norm") else ()):
             if roots["drafter"] + "/" + d[key] not in seen:
                 raise ValueError(f"Missing drafter file in inventory: {d[key]}")
         prefix = roots["drafter"] + "/" + d["model"] + "/"
@@ -401,9 +407,10 @@ def check_drafter(root, m):
         raise ValueError("Missing Core AI DFlash2 package")
     target = json.loads(local(root, m["runtimes"]["coreai"]["path"] + "/manifest.json").read_text())
     cfg, meta = check_drafter_pair(pkg, directory, target, model_config(root, m))
+    head_id = None if meta.get("head_export") is None else Path(meta["head_export"]).parent.name
     if (d["taps"] != cfg["dflash_config"]["target_layer_ids"]
             or d["target_export"] != Path(meta["target_export"]).name
-            or d["head_export"] != Path(meta["head_export"]).parent.name):
+            or d["head_export"] != head_id):
         raise ValueError("Release drafter association disagrees with its runtime metadata")
     return cfg, meta
 
@@ -461,14 +468,19 @@ def make_manifest(a):
         if "coreai" not in m["runtimes"]:
             raise ValueError("A release drafter requires a Core AI target")
         target = json.loads((root / "coreai/manifest.json").read_text())
-        cfg, meta = check_drafter_pair(root / "drafter" / DEFAULT_DRAFTER, root / "drafter", target,
-                                       model_config(root, m))
-        m["drafter"] = dict(path="drafter", runtime="coreai", model=DEFAULT_DRAFTER,
-                            metadata=Path(DEFAULT_DRAFTER).with_suffix(".json").as_posix(),
+        # the body-only package (drafter/all3/, drafts with the target's head) when staged, as serve prefers it;
+        # its bundle then carries no other drafter files (they would sit outside the drafter component)
+        body_only = (root / "drafter" / BODY_ONLY_DRAFTER).is_dir()
+        rel = Path("drafter") / BODY_ONLY_DRAFTER if body_only else Path("drafter") / DEFAULT_DRAFTER
+        cfg, meta = check_drafter_pair(root / rel, (root / rel).parent, target, model_config(root, m))
+        m["drafter"] = dict(path=rel.parent.as_posix(), runtime="coreai", model=rel.name,
+                            metadata=rel.with_suffix(".json").name,
                             config="config.json", codebooks=SELECTOR_FILE,
                             target_export=Path(meta["target_export"]).name,
-                            head_export=Path(meta["head_export"]).parent.name,
+                            head_export=None if meta.get("head_export") is None else Path(meta["head_export"]).parent.name,
                             taps=cfg["dflash_config"]["target_layer_ids"])
+        if body_only:
+            m["drafter"]["head_norm"] = HEAD_NORM_FILE
         groups["drafter"] = root / "drafter"
     if "coreai" in m["runtimes"]:
         require_drafter(m, "coreai", getattr(a, "plain", False))
@@ -681,7 +693,9 @@ def smoke(root, m, runtime, ctx, prompt, tokens, plain=False):
     if not plain:
         from dflash2_ane_drafter import load_codebooks
         from dflash2_coreai_drafter import CoreAIDrafter
-        drafter = CoreAIDrafter(dpkg, dcfg, load_codebooks(ddir), model.emb)
+        head_norm = m["drafter"].get("head_norm")
+        shared = dict(head=getattr(model, "head", None), normw=np.load(local(ddir, head_norm))) if head_norm else {}
+        drafter = CoreAIDrafter(dpkg, dcfg, load_codebooks(ddir), model.emb, **shared)
     load_seconds = time.perf_counter() - start
     output, start = [], time.perf_counter()
     stops = {i for i in (tok.token_to_id("<|im_end|>"), tok.token_to_id("<|endoftext|>")) if i is not None}
