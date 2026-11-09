@@ -7,7 +7,76 @@
 >
 > **Status: published 9 November 2026:** [gregcmartin/anemll-forge-qwen3.8-27B-qualityup](https://huggingface.co/gregcmartin/anemll-forge-qwen3.8-27B-qualityup). On the M6 KL-512 gate against release 0.2, this build has top-1 agreement 91.75% vs 91.42% (significant), mean KL 0.0500 vs 0.0515 (within noise) and p99 KL 0.445 vs 0.513. It costs about 8% per verify call (114.5 vs 106.0 ms at 2K), 3–4% prefill, and 21.6 GB total at the 32K cap (M6 only, contexts 8K–32K). Download it with `python forge.py download --repo gregcmartin/anemll-forge-qwen3.8-27B-qualityup --revision d38a68e73946c788f4c616cbc047a2e671b55931 --runtime coreai --output <dir>`. Results and steps: [pipelines/qualityup/README.md](pipelines/qualityup/README.md#m6-results-9-november-2026). The upstream README follows the runtime benchmark below.
 
-## Runtime benchmark on M6 (inherited from anemll-forge-speedup, release 0.2 weights)
+## Latest M6 Mac mini benchmark
+
+Four deployments ran on M6-2 (Mac18,5, 32 GiB, macOS 27) on 9 November 2026, one after another. The setup:
+- All four got the same 12 fresh prompts: prose and code at 2K and 31.5K tokens, 3 of each. Each value below is the median of three.
+- Each request generated 256 output tokens, with greedy sampling, thinking off and no prompt-cache reuse.
+- Higher prefill and decode rates are better; lower request time is better.
+
+| Workload | Metric | Splash Q6 + DFlash2 | Original ANEMLL | Latest fork | qualityup |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 2K prose | Prefill tok/s | **325.7** | 283.7 | 303.0 | 298.3 |
+| | Decode tok/s | 21.13 | 28.88 | **30.67** | 26.39 |
+| | Complete request, s | 18.32 | 17.07 | **15.07** | 16.53 |
+| 2K coding | Prefill tok/s | **323.6** | 283.8 | 300.9 | 296.4 |
+| | Decode tok/s | 23.90 | 26.54 | **29.16** | 27.68 |
+| | Complete request, s | 16.98 | 16.83 | **15.56** | 16.13 |
+| 31.5K prose | Prefill tok/s | 277.5 | 268.3 | **279.2** | 270.8 |
+| | Decode tok/s | 16.58 | 23.18 | 24.34 | **24.36** |
+| | Complete request, s | 127.18 | 127.21 | **123.42** | 126.76 |
+| 31.5K coding | Prefill tok/s | **284.6** | 273.6 | 280.5 | 271.4 |
+| | Decode tok/s | 18.77 | 23.95 | 24.59 | **25.00** |
+| | Complete request, s | 124.75 | 125.88 | **122.90** | 126.43 |
+| | Verify call, ms (2K / 31.5K) | — | 118.0 / 123.0 | **107.1 / 119.6** | 114.2 / 125.1 |
+
+The deployments:
+- **Splash 1.6:** the production configuration, a Q6_K GGUF with DFlash2 on the GPU, a BF16 KV cache and a 46,809-token context. Its column is a deployment comparison, not an isolated engine test.
+- **Original ANEMLL** (`703131e`) and the **latest fork** (`ada23b3`): release 0.2's weights with its V8 cache and its own DFlash2 drafter.
+- **qualityup** (`1134662`): the [qualityup weights](https://huggingface.co/gregcmartin/anemll-forge-qwen3.8-27B-qualityup) with the kv8 cache and the body-only drafter.
+
+The ANEMLL runs used a 32K cap.
+
+Rates are server-reported: ANEMLL's from `/health` after each request, Splash's from its response timings. The two may use different timing boundaries. Clients ran on the M6 itself.
+
+Results:
+- **Latest fork:** completed every workload fastest. It was 2.4–11.7% faster than original ANEMLL and 1.5–17.7% faster than Splash.
+- **qualityup vs the fork:** 2.7–9.7% slower, because its verify call takes 5–7 ms longer (4.6–6.6%).
+- **qualityup vs original ANEMLL and Splash:** 3–10% faster at 2K, and within ±1.3% of both at 31.5K.
+- **Splash:** kept the highest prefill rate in three of four workloads.
+- **Decode:** follows acceptance, which varies with the text each model writes. The verify call is the like-for-like cost.
+
+Memory at peak, measured as wired above the 2.1 GB no-model baseline plus the server footprint:
+
+| | Original ANEMLL | Latest fork | qualityup |
+| --- | ---: | ---: | ---: |
+| Wired after load | 16.8 GB | 16.8 GB | 18.5 GB |
+| Peak wired, 31.5K prompts | 22.5 GB | 22.5 GB | 21.3 GB |
+| Peak server footprint | 3.4 GB | 2.8 GB | 2.0 GB |
+| **Total at peak** | 23.8 GB | 23.2 GB | **21.2 GB** |
+
+- qualityup's kv8 cache stores keys in INT8; release 0.2's V8 cache keeps them in FP16. That more than offsets qualityup's larger weights at long context.
+- Splash holds 27.2 GB wired while resident, up to its 28 GB cap.
+- Swap stayed near 1.5 GB throughout; other apps were open on the M6.
+
+Responses:
+- Original ANEMLL and the fork matched byte for byte on 7 of 12 responses, the same as on 8 November.
+- qualityup and Splash have different weights and matched neither.
+
+Differences from 8 November:
+- The prompts are slices of this repository's Markdown and Python.
+- Long prompts are 31.5K tokens instead of 32.8K, so they fit qualityup's 32K cap.
+- ANEMLL ran at a 32K cap instead of 48K.
+
+One Splash trial was excluded and rerun with a new opening line. It had hit Splash's persistent prompt cache after an interrupted request. Every deployment got the new prompt.
+
+[Medians](benchmarks/m6-mini-2026-11-09/summary.csv) · [All trials](benchmarks/m6-mini-2026-11-09/trials.csv) · [Memory](benchmarks/m6-mini-2026-11-09/memory.csv) ([samples](benchmarks/m6-mini-2026-11-09/memory-samples.csv)) · [Responses](benchmarks/m6-mini-2026-11-09/responses.jsonl) · [Excluded trial](benchmarks/m6-mini-2026-11-09/excluded-trials.csv)
+
+The [harness](benchmarks/m6-mini-2026-11-09/harness/) is in the repository:
+- `m6_prompts.py` regenerates the prompts from commit `1134662`. The 2K prose trial 1 prompt then opens with the request hash of `short-prose/1/r2`.
+- `m6_bench4.py` takes Splash's address and key file from `SPLASH_URL` and `SPLASH_API_KEY_FILE`.
+
+## Earlier benchmark on M6, 8 November 2026 (release 0.2 weights)
 
 This repository runs the same runtime as [anemll-forge-speedup](https://github.com/gregcmartin/anemll-forge-speedup). These measurements use **release 0.2's weights**, not the qualityup weights.
 

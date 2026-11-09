@@ -1,0 +1,2 @@
+deployment,case,trial,prompt_sha256,prompt_tokens,output_tokens,prefill_tps,decode_tps,request_s,cached_tokens,tok_per_verify,accept_pct
+splash,short-prose,1,c50e644063ec4771ad2f2e526a2b8df98bc9637d68fb702df42e6c00c03eaf42,2034,256,92.01842413336537,20.211965658047305,12.851817582995864,2016,3.240506329113924,32.06521739130435

@@ -1,0 +1,4 @@
+deployment,baseline_gb,loaded_wired_gb,peak_wired_gb,peak_footprint_gb,total_gb,peak_swap_gb
+original,2.1,16.79,22.5,3.35,23.75,1.57
+fork,2.1,16.82,22.49,2.84,23.23,1.55
+qualityup,2.1,18.52,21.29,2.05,21.24,1.54
