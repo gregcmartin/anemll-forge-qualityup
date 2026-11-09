@@ -1,48 +1,35 @@
 # ANEMLL Forge
 
-> **Fork: `anemll-forge-speedup`.** This is a fork of [Anemll/anemll-forge](https://github.com/Anemll/anemll-forge) (MIT; upstream base `703131e`). It changes only the runtime and uses the same weights and packages as release 0.2 / 0.2.1. The changes:
-> - Prefill skips the output head for every block except the last.
-> - **Prompt-lookup (n-gram) drafts** run next to DFlash2. They are on by default; `NGRAM_DRAFT=0` turns them off.
-> - Sampling and greedy acceptance run top-k on FP16 rows.
-> - Text is detokenized incrementally, which also fixes streamed U+FFFD for multi-byte characters.
-> - The drafter runs top-k on FP16 rows and queues its context lazily.
-> - On M6, the DFlash2 dispatch gap defaults to the measured 1 ms; other chips retain 3 ms.
->
-> **Status:** tested end to end on a 32 GB M6 Mac mini with the release 0.2 model and DFlash2. See the measured comparison below. Earlier estimates and the analysis are in [docs/OPTIMIZATION_M6_MINI_2026-11-08.md](docs/OPTIMIZATION_M6_MINI_2026-11-08.md). The upstream README follows the fork-specific section.
+> **`anemll-forge-speedup`** is a runtime fork of [Anemll/anemll-forge](https://github.com/Anemll/anemll-forge). It uses the same release 0.2 model and DFlash2 bundle as the original ANEMLL run. The fork skips unnecessary output-head calls during prefill, speeds up sampling and detokenization, adds prompt lookup beside DFlash2, and uses a measured 1 ms drafter dispatch gap on M6.
 
-## Measured fork speed on an M6 Mac mini
+## Latest M6 Mac mini benchmark
 
-On 8 November 2026, the fork at `c5712106` was compared with upstream `703131e` on the same M6 Mac mini (Mac18,5, 32 GiB, macOS 27.2 build 26B123). Both used the same [release 0.2 model and DFlash2 bundle](https://huggingface.co/anemll/anemll-forge-qwen3.8-27B/tree/440f4e366b43d0f9bbccd79e695b159c4a94d1a0), capped at 48K context, with the Core AI bonded compile mode 2 and v8 KV cache. The fork used its default six-token prompt lookup threshold. Eighteen cached packages passed the strict ANE placement audit and live ANE activity was observed.
+M6-2 (Mac18,5, 32 GiB, macOS 27.2), 8 November 2026. Each value is the median of **three fresh prompts**, with 256 output tokens, greedy sampling, thinking off, and no prompt-cache reuse. Higher prefill and decode rates are better; lower complete request time is better.
 
-Median of three fresh-prompt trials per workload, each with 256 output tokens:
+| Workload | Metric | Splash Q6 + DFlash2 | Original ANEMLL | Latest fork |
+| --- | --- | ---: | ---: | ---: |
+| 2K prose | Prefill tok/s | 327.5 | 298.6 | **305.5** |
+| | Decode tok/s | 17.59 | 23.26 | **24.32** |
+| | Complete request, s | 20.88 | 18.27 | **17.34** |
+| 2K coding | Prefill tok/s | 326.6 | 302.8 | **309.3** |
+| | Decode tok/s | 28.29 | 51.72 | **52.86** |
+| | Complete request, s | 15.41 | 12.27 | **11.61** |
+| 32K prose | Prefill tok/s | 281.4 | 274.9 | **279.5** |
+| | Decode tok/s | 14.54 | 20.03 | **20.47** |
+| | Complete request, s | 134.10 | 138.85 | **130.43** |
+| 32K coding | Prefill tok/s | 283.6 | 273.8 | **278.9** |
+| | Decode tok/s | 18.60 | 35.29 | **34.10** |
+| | Complete request, s | 129.54 | 131.39 | **125.58** |
 
-| Workload | Prefill tok/s, upstream → fork | Decode tok/s, upstream → fork | Full request seconds, upstream → fork | Request time change |
-| --- | ---: | ---: | ---: | ---: |
-| 2K prose | 298.6 → 304.8 | 23.3 → 23.6 | 18.27 → 17.59 | −3.7% |
-| 2K coding | 302.8 → 308.4 | 51.7 → 51.5 | 12.27 → 11.79 | −3.9% |
-| 32K prose | 274.9 → 280.0 | 20.03 → 20.02 | 138.85 → 130.54 | −6.0% |
-| 32K coding | 273.8 → 278.9 | 35.3 → 33.4 | 131.39 → 125.29 | −4.6% |
+The latest fork completed requests **4.4–6.1% faster than original ANEMLL** and **2.7–24.7% faster than Splash** across these workloads. Splash retained the highest prefill rate. The fork decoded faster than original ANEMLL in three workloads; 32K coding decode was 3.4% slower. Complete request time includes prefill and generation.
 
-Prefill improved **1.9–2.1%** in these tests, and complete requests were **3.7–6.0% shorter**. Decode changed from **+1.7% to −5.3%**, depending on the workload; this run does not establish a general decode gain. The fork used prompt lookup in 4, 7, 2 and 6 cycles respectively across the three trials of the four workloads. These synthetic prose and coding prompts do not measure the gain on repeated tool output or file edits.
+Original ANEMLL (`703131e`) and the [latest fork runtime (`ada23b3`)](https://github.com/gregcmartin/anemll-forge-speedup/commit/ada23b3836e82a1c88f46702266dd6c8d1f308ee) used the identical [release 0.2 QAT model and Core AI DFlash2 package](https://huggingface.co/anemll/anemll-forge-qwen3.8-27B/tree/440f4e366b43d0f9bbccd79e695b159c4a94d1a0), with a 48K context cap. Splash 1.6.0 used a different Q6 checkpoint, BF16 KV cache, and DFlash2; its column is a **deployment comparison**, not an isolated engine test. Runs were sequential on M6-2. Prefill and decode rates are server-reported and may use different timing boundaries. Splash client timing used Tailscale HTTP; ANEMLL timing included an authenticated SSH forward.
 
-The exact same prompt bytes were used in each matched trial. Requests were greedy (`temperature=0`, `top_p=1`, presence penalty, DRY and min-p all zero, thinking off), with no prompt-cache reuse and one client at a time. Both runtimes used the same authenticated SSH forward to the loopback API; the model was warmed, and client wall times include the forward. The upstream run was collected earlier the same day, so this is a sequential comparison rather than an interleaved or controlled thermal study. The per-trial [numeric data](benchmarks/m6-mini-2026-11-08/trials.csv) and [medians](benchmarks/m6-mini-2026-11-08/summary.csv) include prompt hashes, active context entries and lookup counts.
+All three deployments passed **5/9** bounded answer checks. Executable coding checks passed **21/21 for Splash**, **20/21 for original ANEMLL**, and **19/21 for the latest fork**. The latest fork matched original ANEMLL byte-for-byte on 7/12 full responses. These small checks do not establish general quality equivalence. The production M6 service was restored to Splash Q6 after testing.
 
-Seven of twelve full greedy responses were byte-identical. Five differed; one focused fork run with prompt lookup disabled also differed from upstream, so these results do not isolate the cause to lookup. Both runtimes passed 5/9 bounded answer checks. The fork passed 19/21 executable coding checks, versus 20/21 upstream: both failed a rolling-median function, and the fork failed one additional case. This small suite does not demonstrate quality equivalence. The production M6 service was restored to Splash Q6 after testing.
+[Median comparison](benchmarks/m6-mini-2026-11-08/latest-comparison.csv) · Raw trials: [Splash](benchmarks/m6-mini-2026-11-08/splash-trials.csv), [original ANEMLL](benchmarks/m6-mini-2026-11-08/original-trials.csv), [latest fork](benchmarks/m6-mini-2026-11-08/fork-latest-trials.csv) · [Optimization notes](docs/OPTIMIZATION_M6_MINI_2026-11-08.md)
 
-### Follow-up: M6 DFlash2 dispatch gap
-
-We tested the same release 0.2 weights, DFlash2 Core AI package, 48K context cap, six-token prompt lookup, and greedy prompts with only the M6 drafter dispatch gap changed from 3 ms to 1 ms. The source change selects 1 ms on M6 and retains 3 ms on other chips. Medians of three fresh-prompt, 256-output-token trials per workload:
-
-| Workload | Prefill tok/s, 3 → 1 ms | Decode tok/s, 3 → 1 ms | Full request seconds, 3 → 1 ms | Decode change |
-| --- | ---: | ---: | ---: | ---: |
-| 2K prose | 304.8 → 305.5 | 23.65 → 24.32 | 17.59 → 17.34 | +2.85% |
-| 2K coding | 308.4 → 309.3 | 51.46 → 52.86 | 11.79 → 11.61 | +2.73% |
-| 32K prose | 280.0 → 279.5 | 20.02 → 20.47 | 130.54 → 130.43 | +2.29% |
-| 32K coding | 278.9 → 278.9 | 33.43 → 34.10 | 125.29 → 125.58 | +2.01% |
-
-The 2K complete requests were 1.45–1.60% shorter. At 32K, prefill dominates: the prose request was 0.09% shorter and the coding request 0.23% longer. All 12 responses were byte-identical to the 3 ms fork run. Both runs passed the same 5/9 bounded answer checks and 19/21 executable coding checks. The new run again had 18/18 fully ANE packages, measured ANE activity, no new swapouts, and a verified return to the production Splash service. The [per-trial numbers](benchmarks/m6-mini-2026-11-08/gap1-trials.csv) and [medians](benchmarks/m6-mini-2026-11-08/gap1-summary.csv) include prompt hashes and cycle counts. These are sequential runs on one M6 Mac mini; the short paired A/B and one 32K paired A/B in the [optimization review](docs/OPTIMIZATION_M6_MINI_2026-11-08.md) independently found about 2–3% decode gain.
-
-We also checked two alternatives before the rerun. A zero millisecond gap brought less than 1% further decode gain and slightly worse complete request times in the short paired runs. A four-token prompt lookup threshold was neutral for coding and slower for prose. Moving the same DFlash2 drafter to the GPU made its call about 240 ms instead of about 15 ms on the ANE, so the drafter remains on the ANE. The GPU cache entry was cleared and the ANE drafter recompiled before the full rerun. No weights or quantization changed.
+---
 
 **A research project for inference of large dense language models on the M6 Apple Neural Engine.** ANEMLL Forge shares inference code, quantization and conversion workflows, experiments, and lessons about Core AI, Core ML, compiler behavior, and ANE architecture.
 
