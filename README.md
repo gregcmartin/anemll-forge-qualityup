@@ -5,7 +5,7 @@
 > - The server wrapper caps context at **32K** by default.
 > - The **body-only `all3` drafter** is used whenever the bundle has one (0.74 GB instead of 1.60 GB of Neural Engine memory).
 >
-> **Status: trained, not yet published.** The GPTQ + QAT run finished on 9 November 2026 on a 96 GB CUDA GPU. On CUDA, QAT lowered mean KL against BF16 from 0.047 (GPTQ alone) to 0.030; see [the run's results](pipelines/qualityup/README.md#training-run-9-november-2026). Conversion and a KL-512 gate on the M6 against release 0.2 follow; weights are published only if they pass. M6 quality, memory and speed are **unmeasured**; the estimate is about +3 GB of Neural Engine memory and about 7% slower decode. Steps: [pipelines/qualityup/README.md](pipelines/qualityup/README.md). The upstream README follows the runtime benchmark below.
+> **Status: published 9 November 2026:** [gregcmartin/anemll-forge-qwen3.8-27B-qualityup](https://huggingface.co/gregcmartin/anemll-forge-qwen3.8-27B-qualityup). On the M6 KL-512 gate against release 0.2, this build has top-1 agreement 91.75% vs 91.42% (significant), mean KL 0.0500 vs 0.0515 (within noise) and p99 KL 0.445 vs 0.513. It costs about 8% per verify call (114.5 vs 106.0 ms at 2K), 3–4% prefill, and 21.6 GB total at the 32K cap (M6 only, contexts 8K–32K). Download it with `python forge.py download --repo gregcmartin/anemll-forge-qwen3.8-27B-qualityup --revision d38a68e73946c788f4c616cbc047a2e671b55931 --runtime coreai --output <dir>`. Results and steps: [pipelines/qualityup/README.md](pipelines/qualityup/README.md#m6-results-9-november-2026). The upstream README follows the runtime benchmark below.
 
 ## Runtime benchmark on M6 (inherited from anemll-forge-speedup, release 0.2 weights)
 

@@ -4,14 +4,12 @@ These weights follow release 0.2's GPTQ + QAT recipe ([docs/QUANTIZATION_TRAININ
 
 Why these layers: in the in-domain MLP band sweep (`QUANTIZATION_NOTES.md`), layers 24–63 hold 89% of the MLP quantization error. A LUT4 matrix keeps about a third of a 3-bit table's GPTQ error (`docs/QUANTIZATION.md`).
 
-Expected cost on M6 (estimated from per-layer measurements, not yet measured as a whole build):
-- about +3.1 GB of Neural Engine memory;
-- +8.8 ms per verify call, about 7% slower decode;
-- prefill unchanged.
+Measured cost on M6 (whole build, against release 0.2 with the same drafter and prompts; [details below](#m6-results-9-november-2026)):
+- +8.5 ms per verify call at 2K context (+5.2 ms at 31.5K), against the +8.8 ms estimated from per-layer measurements;
+- prefill 3–4% slower, where no change was expected;
+- 21.6 GB total at the 32K cap with the body-only `all3` drafter. The per-layer estimate was 22.4 GB, from release 0.2.1's 19.3 GB.
 
-At a 32K cap with the body-only `all3` drafter, release 0.2.1 measured 19.3 GB total on a 32 GB M6, so the estimate is about 22.4 GB.
-
-**Status: trained on 9 November 2026 (results below); not yet converted or gated on the M6.** Weights are unpublished. Speed, memory and M6 quality are unmeasured. Publish weights only after the KL-512 gate below passes.
+**Status: trained, converted, gated and published on 9 November 2026.** The M6 KL-512 gate passed: mean KL 0.0500 against 0.0515 and top-1 agreement 91.75% against 91.42%. Only the top-1 gain is statistically significant. Weights: [gregcmartin/anemll-forge-qwen3.8-27B-qualityup](https://huggingface.co/gregcmartin/anemll-forge-qwen3.8-27B-qualityup), revision `d38a68e73946c788f4c616cbc047a2e671b55931`.
 
 ## Training run, 9 November 2026
 
@@ -41,6 +39,53 @@ KL against BF16 Qwen3.8-27B, measured on CUDA with top-512 reference traces. Thi
 - QAT kept step 550, which had the lowest selection-trace KL: 0.02897, against 0.02912 at step 600.
 - The quantized weights total 10.69 GiB, or 10.98 GiB with the low-rank factors.
 - These numbers can't be compared directly with release 0.2. Its PyTorch export isn't distributed, so it can't be scored on these traces. The M6 gate in step 4 below makes that comparison.
+
+## M6 results, 9 November 2026
+
+Mac mini M6, 32 GB, macOS 27. Conversion settings: release 0.2.1's graph (kv8 cache, 8-bit attention with FP8 softmax and PV, transposed keys), contexts 8K/16K/32K. The conversion took 24 minutes; compile overlapped it, at about 22 s per chunk.
+
+**KL-512 gate.** Both builds were scored on the CUDA run's BF16 top-512 dev trace: 64 prompts, 40,090 positions, at the 8K entry. Release 0.2 is the published package, with its V8 cache. The paired bootstrap resamples the 64 prompts 20,000 times.
+
+| | qualityup | release 0.2 | qualityup − release 0.2, paired 95% CI |
+| --- | ---: | ---: | --- |
+| Mean KL | **0.0500** | 0.0515 | −0.0044 to +0.0013 (not significant) |
+| Median KL | 0.0093 | 0.0093 | |
+| p99 KL | **0.445** | 0.513 | |
+| Top-1 agreement | **91.75%** | 91.42% | +0.06 to +0.60 points (significant) |
+| Perplexity (BF16: 2.149) | 2.141 | 2.144 | |
+
+- Qualityup had lower KL on only 30 of the 64 prompts. Mean KL between the two builds is 0.073, with 89.8% top-1 agreement.
+- On CUDA, QAT took this export to 0.030. On the M6, the graph's own approximations (tanh SiLU, INT8 attention, quantized cache) add error that both weight sets share. That shared error narrows the gap.
+
+**Speed.** Method:
+- 3 prompts each of prose (this repository's Markdown) and code (its Python), at about 2K and 31.5K tokens;
+- identical prompts for both models (same SHA-256);
+- greedy decoding, 256 output tokens, thinking off;
+- no prompt-cache reuse, 32K cap, the body-only `all3` drafter.
+
+Rates come from the server's own log.
+
+| | qualityup | release 0.2 |
+| --- | ---: | ---: |
+| Prefill, 2K prompts | 291 tok/s | 300 tok/s |
+| Prefill, 31.5K prompts | 269 tok/s | 280 tok/s |
+| Verify call, 2K context | 114.5 ms | 106.0 ms |
+| Verify call, 31.5K context | 125.0 ms | 119.8 ms |
+| Decode, 2K (tokens per verify) | 27.8 tok/s (3.18) | 30.9 tok/s (3.27) |
+| Decode, 31.5K (tokens per verify) | 24.7 tok/s (3.09) | 24.6 tok/s (2.95) |
+
+Decode speed moves with acceptance, which depends on the text each model writes. The verify-call time is the like-for-like cost.
+
+**Memory** at the 32K cap. Total = wired memory above the 2.2 GB no-model baseline, plus the server footprint (release 0.2.1's method).
+
+| | qualityup (kv8) | release 0.2 (V8) |
+| --- | ---: | ---: |
+| Wired after load | 18.6 GB | 16.0 GB |
+| Peak wired, 31.5K prompts | 21.3 GB | 22.5 GB |
+| Peak server footprint | 2.5 GB | 3.1 GB |
+| **Total at peak** | **21.6 GB** | 23.4 GB |
+
+Release 0.2's V8 cache keeps keys in FP16, which is why its long-context peak is higher. Release 0.2.1 (release 0.2's weights with kv8) reports 19.3 GB, so qualityup costs about 2.3 GB more at equal cache format; the two were not measured side by side. Swap did not grow.
 
 ## 1. Rent a machine
 
@@ -91,6 +136,12 @@ Run these from this repository's checkout. Copy `qualityup_full.tar` to the M6 f
    MODEL=<as in docs/WORKFLOW.md step 5> EXPORT_DIR=<untarred>/qualityup_full OUT=<builds> \
      python coreai/qwen38_coreai_build.py all --kv-cache-dtype kv8 --ctx 8192,16384,32768 --pctx 8192,16384,32768
    ```
+   The published build used release 0.2's numerics and 8-bit attention settings, from `release/huggingface-export/EXPORT.md`, without the M5 function set. Set these in the environment of the command above:
+   ```sh
+   SILU=tanh MLP_SILU=tanh GDN_SQ=16 GDN_SV=64 MLP_DS=1 QCONV_INT8=0 \
+   ATT_S8_UNIT=0.25 ATT_S8B_UNIT=0.25 ATT_PF8_UNIT=0.015625 ATT_INT8MM=s8,s8b,sm8,pvf8 KV_KEYS_T=1
+   ```
+   `MODEL` only needs the small per-layer tensors and the final norm, plus `config.json`. The quantized matrices and head come from the export.
 2. **Drafter:** copy release 0.2.1's body-only drafter into the bundle (`drafter/all3/`):
    ```sh
    hf download anemll/anemll-forge-qwen3.8-27B-192K --include "drafter/all3/*" --local-dir <bundle>
@@ -100,4 +151,4 @@ Run these from this repository's checkout. Copy `qualityup_full.tar` to the M6 f
 4. **Quality gate:** run `scripts/m6_kl512_eval.py run` for the release 0.2 build and for the new build with the same `--ref-dir <untarred>/kl_dev`. Publish only if the new build's KL-512 and top-1 agreement are better.
 5. **Memory and speed:** record the process and Neural Engine memory at 32K, and decode speed against release 0.2 with the same drafter.
 
-Then upload the bundle following [docs/HUGGING_FACE.md](../../docs/HUGGING_FACE.md) and replace the estimates in this file with the measured numbers.
+Then stage and upload the bundle following [docs/HUGGING_FACE.md](../../docs/HUGGING_FACE.md), with the body-only drafter at `drafter/all3/` and no other drafter files. `release-manifest` records it with `head_export: null` and `head_norm`.
