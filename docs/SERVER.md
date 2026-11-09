@@ -102,7 +102,7 @@ Clients set these in each `POST /v1/chat/completions` request. The server-wide d
 | `temperature` | 1.0 with thinking, 0.7 without; `0` decodes greedily | |
 | `top_p` | 0.95 with thinking, 0.8 without | |
 | `top_k` | 20 (`0` also means 20) | |
-| `presence_penalty` | 0 | `--presence` |
+| `presence_penalty` | 0 with thinking, **1.5 without** (including Pi's compaction summaries) | `--presence`, `--presence-nothink` |
 | `dry_multiplier` | 0 (off) | `--dry`; base `--dry-base 1.75`, tolerated run `--dry-allowed 8` tokens |
 | `max_tokens` or `max_completion_tokens` | 4096, reduced to fit the context cap | `--max-tokens` |
 | `reasoning_effort` (or in `chat_template_kwargs`) | `medium` | `--think-budget low=2048,medium=6144,xhigh=12288` |
@@ -112,10 +112,12 @@ Clients set these in each `POST /v1/chat/completions` request. The server-wide d
 Notes:
 
 - The sampling defaults follow the Qwen3.8 model card. Speculative decoding keeps the target's sampling distribution. Presence and DRY penalties apply only when sampling, not to greedy decoding.
-- The card suggests `presence_penalty` 1.5 for non-thinking chat. It lowers every token that already appeared, which is usually unhelpful for code; see [DFLASH2_SAMPLING_PLAN.md](research/DFLASH2_SAMPLING_PLAN.md).
+- The card suggests `presence_penalty` 1.5 for non-thinking chat. It lowers every token that already appeared, which is usually unhelpful for code; see [DFLASH2_SAMPLING_PLAN.md](research/DFLASH2_SAMPLING_PLAN.md). The server nevertheless defaults to 1.5 without thinking (`--presence-nothink`, since commit `b761075`: at 0 a Pi compaction summary repeated itself up to its token cap). Pi's profile (`examples/pi/models.json`) sends 0 explicitly; other clients that leave the field out get 1.5 when they sample.
 - Thinking budget: `minimal` and `low` map to `low`, `medium` to `medium`, anything else to `xhigh`. When the budget is reached the server closes the thinking with Qwen's budget phrase. The budget is capped at `max(max_tokens - 4096, max_tokens / 2)`, so with the default `max_tokens` of 4096 thinking gets at most 2048 tokens. A 4096 cap with thinking can end without a final answer.
 - The output cap shrinks to fit: a verify writes 8 rows past the committed position, so `max_tokens` is at most the context cap minus the prompt minus 8.
-- The loop guard (`--loop-guard 6`, `0` turns it off) stops generation when the output tail repeats six times with the same period. It is server-wide only.
+- The loop guard (`--loop-guard 3`, `0` turns it off) stops generation when an exact repetition of at least three periods (4 to 1024 tokens) covers the last `--loop-span` (1536) tokens or more. It is server-wide only.
+- **Benchmarking quality** against other quantizations: send `temperature`, `top_p`, `top_k`, `presence_penalty` and `enable_thinking` explicitly in every request (match the other runtime's settings), set `max_tokens` large enough for the task and `thinking_budget: 0` (otherwise thinking is closed at 2,048 tokens under the default `max_tokens`), and start the server with `--loop-guard 0`. With the defaults, reasoning tasks are cut short and non-thinking sampled requests carry a 1.5 presence penalty: neither is a property of the weights. See [BENCHMARK_PLAN.md](BENCHMARK_PLAN.md).
+- **Prompt-lookup drafts** (`--ngram-draft 6`, env `NGRAM_DRAFT`, `0` turns them off): when the last 6 or more tokens of the context (committed tokens and the anchor) occurred earlier, the 7 tokens that followed are verified instead of a DFlash2 draft, and the drafter's call (15 to 17 ms on M6) is skipped. The verify's acceptance rule is the same for both kinds of draft, so greedy output is unchanged and sampled output keeps the target's distribution. The minimum match adapts per request: it doubles after a lookup draft with fewer than 2 accepted tokens and halves after a fully accepted one. The request log line reports `lookup <n>/<cycles> cycles, <tok/verify>`; `/health` reports `lookup_cycles` and `lookup_accepted`. Its speed on M6 has not been measured yet ([scripts/ngram_draft.py](../scripts/ngram_draft.py)).
 
 ### Changing a server-wide default
 

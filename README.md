@@ -1,5 +1,14 @@
 # ANEMLL Forge
 
+> **Fork: `anemll-forge-speedup`.** This is a fork of [Anemll/anemll-forge](https://github.com/Anemll/anemll-forge) (MIT; upstream base `703131e`). It changes only the runtime and uses the same weights and packages as release 0.2 / 0.2.1. The changes:
+> - Prefill skips the output head for every block except the last.
+> - **Prompt-lookup (n-gram) drafts** run next to DFlash2. They are on by default; `NGRAM_DRAFT=0` turns them off.
+> - Sampling and greedy acceptance run top-k on FP16 rows.
+> - Text is detokenized incrementally, which also fixes streamed U+FFFD for multi-byte characters.
+> - The drafter runs top-k on FP16 rows and queues its context lazily.
+>
+> **Status:** unit-tested (`python -m unittest discover -s tests`), but **not yet measured end to end on an M6**. Estimated gains are +1.5–3% prefill, about +3% decode with sampling, and +1–15% on tool-call-heavy output from the lookups. The analysis, estimates and A/B commands are in [docs/OPTIMIZATION_M6_MINI_2026-11-08.md](docs/OPTIMIZATION_M6_MINI_2026-11-08.md). The upstream README follows unchanged.
+
 **A research project for inference of large dense language models on the M6 Apple Neural Engine.** ANEMLL Forge shares inference code, quantization and conversion workflows, experiments, and lessons about Core AI, Core ML, compiler behavior, and ANE architecture.
 
 The first model is an independent ANEMLL adaptation of **[Qwen/Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B)**, developed by the **Qwen Team / Alibaba Cloud**. The release runs a **Core AI target with a Swift bridge and the matching Core AI DFlash2 speculative drafter**. Both target and drafter are included in the model bundle. Core ML conversion code and research findings remain available for reproduction and learning.
@@ -305,6 +314,7 @@ KL divergence is the current distributional-fidelity evaluation; it does not est
 - [Session lessons and troubleshooting](docs/SESSION_LESSONS.md)
 - [Quality benchmark plan](docs/BENCHMARK_PLAN.md)
 - [Serving-session performance analysis](docs/PERFORMANCE_SESSION.md)
+- [Speed and quality review for a 32 GB M6 Mac mini](docs/OPTIMIZATION_M6_MINI_2026-11-08.md): head-free prefill blocks, prompt-lookup drafts, host-side decode costs, why scores trail Q4/Q6
 - [Experiment guide](docs/EXPERIMENTS.md) and [M3U pipeline archive](pipelines/m3u/README.md)
 - [Release checklist](docs/RELEASE.md) and [validation records](docs/VALIDATION.md)
 
