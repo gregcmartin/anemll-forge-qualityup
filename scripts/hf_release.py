@@ -16,6 +16,7 @@ COMMANDS = {"release-manifest", "download", "quick-test"}
 MANIFEST = "release.json"
 DEFAULT_REPO = "anemll/anemll-forge-qwen3.8-27B"
 DEFAULT_DRAFTER = "dflash2_lut4_gptq.aimodel"
+BODY_ONLY_DRAFTER = "all3/dflash2_lut4_gptq_nohead.aimodel"   # qualityup default when the bundle has it
 SELECTOR_FILE = "selector.safetensors"
 SELECTOR_KEYS = ("candidate_selector.predecessor_codebook", "candidate_selector.successor_codebook")
 ROOT_DOCUMENTS = {"README.md", "LICENSE", "NOTICE", "MODIFICATIONS.md", "QWEN_SOURCE.json"}
@@ -329,8 +330,12 @@ def check_selector(p, vocab, rank):
 
 
 def drafter_paths(build, draft=None, directory=None):
-    """Resolve the tested release drafter; never substitute a legacy Core ML/RTN package."""
-    pkg = Path(draft).expanduser().resolve() if draft else build.parent / "drafter" / DEFAULT_DRAFTER
+    """Resolve the tested release drafter; never substitute a legacy Core ML/RTN package.
+    Without --draft, a bundle's body-only drafter (drafter/all3/, release 0.2.1 layout: it uses the target's output
+    head, 0.74 GB of Neural Engine memory instead of 1.60 GB at the same speed) is preferred when present."""
+    body_only = build.parent / "drafter" / BODY_ONLY_DRAFTER
+    pkg = (Path(draft).expanduser().resolve() if draft else
+           body_only if body_only.is_dir() else build.parent / "drafter" / DEFAULT_DRAFTER)
     directory = Path(directory).expanduser().resolve() if directory else pkg.parent
     if pkg.suffix != ".aimodel" or not pkg.is_dir():
         raise ValueError(f"Missing Core AI DFlash2 drafter: {pkg}. Supply --draft/--drafter, or --plain for diagnostics.")

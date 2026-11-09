@@ -97,7 +97,7 @@ def parse(argv=None):
     p.add_argument("--loop-span", type=int, default=1536, help="shortest repeated tail the loop guard stops, so short "
                    "repeats in code pass (6 repeats of a 32-token row cut a 20-row board literal at row 7)")
     modes = p.add_mutually_exclusive_group()
-    modes.add_argument("--draft", help="Core AI DFlash2 package (default: bundle/drafter/dflash2_lut4_gptq.aimodel)")
+    modes.add_argument("--draft", help="Core AI DFlash2 package (default: bundle/drafter/all3/dflash2_lut4_gptq_nohead.aimodel when present, else bundle/drafter/dflash2_lut4_gptq.aimodel)")
     modes.add_argument("--plain", action="store_true", help="diagnostic target-only generation")
     p.add_argument("--drafter", help="drafter config/selector directory (default: drafter package parent)")
     p.add_argument("--ngram-draft", type=int, default=int(os.environ.get("NGRAM_DRAFT", "6")),

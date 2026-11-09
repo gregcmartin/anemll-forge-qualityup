@@ -12,7 +12,7 @@
 #   FORGE_BUNDLE  bundle with model/ + coreai/ + drafter/ (default: ~/Models/anemll-forge-qwen3.8-27B)
 #   MODEL, BUILD  override the checkpoint / Core AI build separately
 #   CTX           context cap, one of the build's contexts: a number or 8K / 16K / 32K / 48K / 64K / 96K / 128K /
-#                 192K (default: 16384). It caps the KV growth and Pi's window (compaction 20,480 tokens below it
+#                 192K (default: 32768, the qualityup cap). It caps the KV growth and Pi's window (compaction 20,480 tokens below it
 #                 from 64K up); the Neural Engine programs and their memory are the same for every cap of a build
 #   KV_CACHE_DTYPE auto (manifest), fp16, v8 or kv8; requires the matching BUILD export
 #   SUMMARY_THINK 1: keep thinking for context-summary requests (Pi's compaction); default 0: they run without
@@ -20,7 +20,8 @@
 #   BIND_HOST     listen address (default: 127.0.0.1; set 0.0.0.0 to expose)
 #   CORS_ORIGINS  browser origins (comma list, or *) allowed to read GET /health and /v1/models, e.g. a live
 #                 readout page (default: none; completions are never readable cross-origin)
-#   DRAFT         on (default, sibling drafter/), off/--plain, or a path to a *.aimodel package
+#   DRAFT         on (default: sibling drafter/all3/ body-only drafter when present, else drafter/), off/--plain,
+#                 or a path to a *.aimodel package
 #   DRAFTER       directory holding the drafter config.json + selector.safetensors (default: package parent)
 #   PY            python with the inference environment (default: .venv/bin/python if present, else python3)
 #   MPSGRAPH_ANE_BONDED_COMPILE_MODE  ANE compile mode override (M5 family -> 1, M6+ -> 2; see
@@ -47,7 +48,7 @@ MODEL="${MODEL:-$FORGE_BUNDLE/model}"
 BUILD="${BUILD:-$FORGE_BUNDLE/coreai}"
 PORT="${PORT:-8765}"
 BIND_HOST="${BIND_HOST:-127.0.0.1}"
-CTX="${CTX:-16384}"
+CTX="${CTX:-32768}"   # qualityup: 32K cap leaves memory for the LUT4 late-MLP layers on a 32 GB Mac
 KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-auto}"
 SUMMARY_THINK="${SUMMARY_THINK:-0}"
 PY="${PY:-}"

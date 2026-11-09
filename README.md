@@ -1,13 +1,11 @@
 # ANEMLL Forge
 
-> **Fork: `anemll-forge-speedup`.** This is a fork of [Anemll/anemll-forge](https://github.com/Anemll/anemll-forge) (MIT; upstream base `703131e`). It changes only the runtime and uses the same weights and packages as release 0.2 / 0.2.1. The changes:
-> - Prefill skips the output head for every block except the last.
-> - **Prompt-lookup (n-gram) drafts** run next to DFlash2. They are on by default; `NGRAM_DRAFT=0` turns them off.
-> - Sampling and greedy acceptance run top-k on FP16 rows.
-> - Text is detokenized incrementally, which also fixes streamed U+FFFD for multi-byte characters.
-> - The drafter runs top-k on FP16 rows and queues its context lazily.
+> **`anemll-forge-qualityup`.** This is a copy of [Anemll/anemll-forge](https://github.com/Anemll/anemll-forge) (MIT; upstream base `703131e`). It includes every runtime change of [anemll-forge-speedup](https://github.com/gregcmartin/anemll-forge-speedup) and adds a quality-first configuration for a 32 GB M6:
+> - **4-bit lookup tables for the MLP of layers 24–63**, in place of 3-bit vector tables. These layers hold 89% of the MLP quantization error.
+> - The server wrapper caps context at **32K** by default.
+> - The **body-only `all3` drafter** is used whenever the bundle has one (0.74 GB instead of 1.60 GB of Neural Engine memory).
 >
-> **Status:** unit-tested (`python -m unittest discover -s tests`), but **not yet measured end to end on an M6**. Estimated gains are +1.5–3% prefill, about +3% decode with sampling, and +1–15% on tool-call-heavy output from the lookups. The analysis, estimates and A/B commands are in [docs/OPTIMIZATION_M6_MINI_2026-11-08.md](docs/OPTIMIZATION_M6_MINI_2026-11-08.md). The upstream README follows unchanged.
+> **Status: recipe only, no weights yet.** The weights need a GPTQ + QAT run on a 96 GB CUDA GPU, then conversion and a KL-512 gate on the M6 against release 0.2. Quality, memory and speed are **unmeasured**; the estimate is about +3 GB of Neural Engine memory and about 7% slower decode. Steps: [pipelines/qualityup/README.md](pipelines/qualityup/README.md). The upstream README follows unchanged.
 
 **A research project for inference of large dense language models on the M6 Apple Neural Engine.** ANEMLL Forge shares inference code, quantization and conversion workflows, experiments, and lessons about Core AI, Core ML, compiler behavior, and ANE architecture.
 

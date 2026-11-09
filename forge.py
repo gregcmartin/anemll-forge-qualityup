@@ -31,7 +31,7 @@ def parser():
     sub.add_parser("doctor", help="report environment without loading a model")
     c = sub.add_parser("compile", help="compile a Core AI build for this Mac's ANE ahead of serving, with progress and ETA")
     c.add_argument("--build", type=path, required=True, help="Core AI target build directory")
-    c.add_argument("--draft", type=path, help="DFlash2 drafter package; default: bundle/drafter/dflash2_lut4_gptq.aimodel "
+    c.add_argument("--draft", type=path, help="DFlash2 drafter package; default: bundle/drafter/all3/dflash2_lut4_gptq_nohead.aimodel when present, else bundle/drafter/dflash2_lut4_gptq.aimodel "
                    "next to the build, when present")
     c.add_argument("--force", action="store_true", help="drop this Python's cached ANE specializations of the build "
                    "(and drafter) first, so every package recompiles")
@@ -63,7 +63,7 @@ def parser():
                 q.add_argument("--kv-cache-dtype", choices=("auto", "fp16", "v8", "kv8"), default="auto",
                                help="require a matching cache export; auto reads its manifest")
                 modes = q.add_mutually_exclusive_group()
-                modes.add_argument("--draft", type=path, help="Core AI DFlash2 package; default: bundle/drafter/dflash2_lut4_gptq.aimodel")
+                modes.add_argument("--draft", type=path, help="Core AI DFlash2 package; default: bundle/drafter/all3/dflash2_lut4_gptq_nohead.aimodel when present, else bundle/drafter/dflash2_lut4_gptq.aimodel")
                 modes.add_argument("--plain", action="store_true", help="diagnostic target-only generation")
                 q.add_argument("--drafter", type=path, help="drafter config/selector directory; default: package parent")
                 q.add_argument("--host", default="127.0.0.1")
