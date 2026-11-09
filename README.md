@@ -5,7 +5,38 @@
 > - The server wrapper caps context at **32K** by default.
 > - The **body-only `all3` drafter** is used whenever the bundle has one (0.74 GB instead of 1.60 GB of Neural Engine memory).
 >
-> **Status: recipe only, no weights yet.** The weights need a GPTQ + QAT run on a 96 GB CUDA GPU, then conversion and a KL-512 gate on the M6 against release 0.2. Quality, memory and speed are **unmeasured**; the estimate is about +3 GB of Neural Engine memory and about 7% slower decode. Steps: [pipelines/qualityup/README.md](pipelines/qualityup/README.md). The upstream README follows unchanged.
+> **Status: weights in training, not yet published.** The GPTQ + QAT run on a 96 GB CUDA GPU started on 9 November 2026. Conversion and a KL-512 gate on the M6 against release 0.2 follow; weights are published only if they pass. Quality, memory and speed are **unmeasured**; the estimate is about +3 GB of Neural Engine memory and about 7% slower decode. Steps: [pipelines/qualityup/README.md](pipelines/qualityup/README.md). The upstream README follows the runtime benchmark below.
+
+## Runtime benchmark on M6 (inherited from anemll-forge-speedup, release 0.2 weights)
+
+This repository runs the same runtime as [anemll-forge-speedup](https://github.com/gregcmartin/anemll-forge-speedup). These measurements use **release 0.2's weights**, not the qualityup weights.
+
+M6-2 (Mac18,5, 32 GiB, macOS 27.2), 8 November 2026. Each value is the median of **three fresh prompts**, with 256 output tokens, greedy sampling, thinking off, and no prompt-cache reuse. Higher prefill and decode rates are better; lower complete request time is better.
+
+| Workload | Metric | Splash Q6 + DFlash2 | Original ANEMLL | Latest fork |
+| --- | --- | ---: | ---: | ---: |
+| 2K prose | Prefill tok/s | 327.5 | 298.6 | **305.5** |
+| | Decode tok/s | 17.59 | 23.26 | **24.32** |
+| | Complete request, s | 20.88 | 18.27 | **17.34** |
+| 2K coding | Prefill tok/s | 326.6 | 302.8 | **309.3** |
+| | Decode tok/s | 28.29 | 51.72 | **52.86** |
+| | Complete request, s | 15.41 | 12.27 | **11.61** |
+| 32K prose | Prefill tok/s | 281.4 | 274.9 | **279.5** |
+| | Decode tok/s | 14.54 | 20.03 | **20.47** |
+| | Complete request, s | 134.10 | 138.85 | **130.43** |
+| 32K coding | Prefill tok/s | 283.6 | 273.8 | **278.9** |
+| | Decode tok/s | 18.60 | 35.29 | **34.10** |
+| | Complete request, s | 129.54 | 131.39 | **125.58** |
+
+The latest fork completed requests **4.4–6.1% faster than original ANEMLL** and **2.7–24.7% faster than Splash** across these workloads. Splash retained the highest prefill rate. The fork decoded faster than original ANEMLL in three workloads; 32K coding decode was 3.4% slower. Complete request time includes prefill and generation.
+
+Original ANEMLL (`703131e`) and the [latest fork runtime (`ada23b3`)](https://github.com/gregcmartin/anemll-forge-speedup/commit/ada23b3836e82a1c88f46702266dd6c8d1f308ee) used the identical [release 0.2 QAT model and Core AI DFlash2 package](https://huggingface.co/anemll/anemll-forge-qwen3.8-27B/tree/440f4e366b43d0f9bbccd79e695b159c4a94d1a0), with a 48K context cap. Splash 1.6.0 used a different Q6 checkpoint, BF16 KV cache, and DFlash2; its column is a **deployment comparison**, not an isolated engine test. Runs were sequential on M6-2. Prefill and decode rates are server-reported and may use different timing boundaries. Splash client timing used Tailscale HTTP; ANEMLL timing included an authenticated SSH forward.
+
+All three deployments passed **5/9** bounded answer checks. Executable coding checks passed **21/21 for Splash**, **20/21 for original ANEMLL**, and **19/21 for the latest fork**. The latest fork matched original ANEMLL byte-for-byte on 7/12 full responses. These small checks do not establish general quality equivalence. The production M6 service was restored to Splash Q6 after testing.
+
+[Median comparison](benchmarks/m6-mini-2026-11-08/latest-comparison.csv) · Raw trials: [Splash](benchmarks/m6-mini-2026-11-08/splash-trials.csv), [original ANEMLL](benchmarks/m6-mini-2026-11-08/original-trials.csv), [latest fork](benchmarks/m6-mini-2026-11-08/fork-latest-trials.csv) · [Optimization notes](docs/OPTIMIZATION_M6_MINI_2026-11-08.md)
+
+---
 
 **A research project for inference of large dense language models on the M6 Apple Neural Engine.** ANEMLL Forge shares inference code, quantization and conversion workflows, experiments, and lessons about Core AI, Core ML, compiler behavior, and ANE architecture.
 
@@ -22,7 +53,7 @@ The [quantization training guide](docs/QUANTIZATION_TRAINING.md) covers the incl
 ## Hardware and software
 
 - **M6 is the main development and performance target.** M5, M5 Pro, and M5 Max are also supported; expect roughly half the M6 throughput (about 2× slower) for comparable ANE workloads. This is approximate guidance, not a matched benchmark across every chip and context size. The release 0.2.1 long-context packages (192K) are M6 only for now.
-- **macOS 27 with a compatible Xcode 27 / Core AI SDK.** The bridge was checked with Apple Swift 6.4. Older macOS/SDK versions without `CoreAI` cannot build this runtime.
+- **macOS 27 with a compatible Core AI SDK.** The bridge was built and ANEMLL served on the tested M6 using Apple Swift 6.4.2 from Command Line Tools, without a full Xcode app. Older macOS/SDK versions without `CoreAI` cannot build this runtime.
 - **Python 3.11** for inference; **Node.js 22.19 or newer** and npm for optional Pi coding sessions.
 - **32 GB or more unified memory is recommended.** Start with 16K context. The paired bundle is approximately 16 GB; allow additional disk space for downloads and compilation caches (11–14 GB was observed for a cold target compilation).
 
@@ -33,8 +64,8 @@ The first start of a model on a given macOS build compiles every package for the
 Install Python 3.11 and the compatible Xcode toolchain, then run:
 
 ```sh
-git clone https://github.com/Anemll/anemll-forge.git
-cd anemll-forge
+    git clone https://github.com/gregcmartin/anemll-forge-qualityup.git
+    cd anemll-forge-qualityup
 
 python3.11 -m venv .venv
 source .venv/bin/activate

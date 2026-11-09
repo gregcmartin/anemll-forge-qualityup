@@ -136,7 +136,7 @@ These are measured mitigations and research switches, not settings most users ne
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `DRAFT_GAP_MS` | `3` | Minimum interval after a verify before the next draft is submitted |
+| `DRAFT_GAP_MS` | `1` on M6, `3` elsewhere | Minimum interval after a verify before the next draft is submitted. An explicit value overrides the SoC default. The M6 setting was measured with release 0.2 and DFlash2; see the M6 optimization review. |
 | `COREAI_DRAFTER_COMPUTE` | `ane` (set by the launcher) | Drafter compute device |
 | `MPSGRAPH_ANE_BONDED_COMPILE_MODE` | set by SoC policy (`1` on the M5 family, H17; `2` on M6+, H18) | ANE compile mode; an explicit value overrides the policy. Compiled packages are cached per mode. See [ANE compile mode policy](ANE_COMPILE_MODE_POLICY.md) |
 | `ANE_COMPILE_HEARTBEAT_S` | `30` | Seconds between `[ANE compile]` progress lines during a long compile |

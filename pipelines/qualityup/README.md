@@ -23,7 +23,7 @@ At a 32K cap with the body-only `all3` drafter, release 0.2.1 measured 19.3 GB t
 ## 2. Set up (once)
 
 ```sh
-git clone <this repository> anemll-forge && cd anemll-forge
+git clone https://github.com/gregcmartin/anemll-forge-qualityup.git anemll-forge && cd anemll-forge
 bash pipelines/qualityup/setup_cuda.sh      # venv, CUDA PyTorch, fla, BF16 checkpoint (pinned revision), WikiText-2
 ```
 
