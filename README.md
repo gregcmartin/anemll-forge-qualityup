@@ -43,7 +43,7 @@ The [quantization training guide](docs/QUANTIZATION_TRAINING.md) covers the incl
 ## Hardware and software
 
 - **M6 is the main development and performance target.** M5, M5 Pro, and M5 Max are also supported; expect roughly half the M6 throughput (about 2× slower) for comparable ANE workloads. This is approximate guidance, not a matched benchmark across every chip and context size. The release 0.2.1 long-context packages (192K) are M6 only for now.
-- **macOS 27 with a compatible Xcode 27 / Core AI SDK.** The bridge was checked with Apple Swift 6.4. Older macOS/SDK versions without `CoreAI` cannot build this runtime.
+- **macOS 27 with a compatible Core AI SDK.** The bridge was built and ANEMLL served on the tested M6 using Apple Swift 6.4.2 from Command Line Tools, without a full Xcode app. Older macOS/SDK versions without `CoreAI` cannot build this runtime.
 - **Python 3.11** for inference; **Node.js 22.19 or newer** and npm for optional Pi coding sessions.
 - **32 GB or more unified memory is recommended.** Start with 16K context. The paired bundle is approximately 16 GB; allow additional disk space for downloads and compilation caches (11–14 GB was observed for a cold target compilation).
 
@@ -54,8 +54,8 @@ The first start of a model on a given macOS build compiles every package for the
 Install Python 3.11 and the compatible Xcode toolchain, then run:
 
 ```sh
-git clone https://github.com/Anemll/anemll-forge.git
-cd anemll-forge
+    git clone https://github.com/gregcmartin/anemll-forge-speedup.git
+    cd anemll-forge-speedup
 
 python3.11 -m venv .venv
 source .venv/bin/activate
