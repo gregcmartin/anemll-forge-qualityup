@@ -85,7 +85,19 @@ s_gptq_eval() {
     EXPORT_DIR="$GPTQ_EXPORT" TRACE="$tr" TAG="$GPTQ_TAG" "$PY" scripts/qwen38_kl.py eval
   done
 }
-s_teacher() { BS=2 "$PY" scripts/qwen38_qat_kl.py teacher; }
+wiki_ids() {  # WikiText token caches as qwen38_gptq_27b.chunks writes them (the teacher reads them; GPTQ may run later)
+  "$PY" - <<EOF
+import numpy as np, pathlib
+from tokenizers import Tokenizer
+w, tok = pathlib.Path("$WIKI"), Tokenizer.from_file("$MODEL/tokenizer.json")
+for split in ("train", "test"):
+    f = w / f"qwen38_{split}_ids.npy"
+    if not f.exists():
+        np.save(f, np.array(tok.encode((w / f"wiki2_{split}.txt").read_text()[:6_000_000]).ids))
+    print(f, np.load(f).shape)
+EOF
+}
+s_teacher() { wiki_ids; BS=2 "$PY" scripts/qwen38_qat_kl.py teacher; }
 s_check() { EXPORT_DIR="$GPTQ_EXPORT" CHECK_BASE="$GPTQ_TAG" CHECK_SEQ=32 "$PY" scripts/qwen38_qat_kl.py check; }
 s_train() {
   EXPORT_DIR="$GPTQ_EXPORT" OUT_DIR="$QAT_OUT" TRAIN_PARTS=lut,scale,head,lr STEPS="${STEPS:-600}" BS=2 \
