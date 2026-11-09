@@ -11,7 +11,36 @@ Expected cost on M6 (estimated from per-layer measurements, not yet measured as 
 
 At a 32K cap with the body-only `all3` drafter, release 0.2.1 measured 19.3 GB total on a 32 GB M6, so the estimate is about 22.4 GB.
 
-**Status: no weights yet.** Quality and speed are unmeasured. Publish weights only after the KL-512 gate below passes.
+**Status: trained on 9 November 2026 (results below); not yet converted or gated on the M6.** Weights are unpublished. Speed, memory and M6 quality are unmeasured. Publish weights only after the KL-512 gate below passes.
+
+## Training run, 9 November 2026
+
+Hardware: 1× RTX PRO 6000 Blackwell Workstation (96 GB), rented on Vast.ai at $1.72/h. Calibration used no Pi session rows; 48 corpus rows took their place.
+
+| Stage | Wall time |
+| --- | ---: |
+| Data: chat calibration 5 min, corpus 37 min, traces 9 min, teacher cache 3 min | 54 min |
+| GPTQ with the plan | 58 min |
+| GPTQ eval | 15 min |
+| Parity check (0.39% relative, tolerance 2%) | 3 min |
+| QAT, 600 steps: 13 s per step, 45.3 GiB peak GPU memory, evaluations every 50 steps included | 199 min |
+| Final eval and pack | 15 min |
+
+The pipeline took about 6 hours. The whole rental, including setup and download, took about 7 hours and cost $12.85.
+
+KL against BF16 Qwen3.8-27B, measured on CUDA with top-512 reference traces. This is **not** the M6 KL-512 gate:
+
+| Export | Trace | Mean KL | p99 KL | Top-1 agreement |
+| --- | --- | ---: | ---: | ---: |
+| GPTQ only | dev (64 prompts, 40,090 tokens) | 0.0472 | 0.736 | 93.0% |
+| GPTQ + QAT | dev | **0.0297** | **0.277** | **93.8%** |
+| GPTQ only | selection (48 prompts, 33,250 tokens) | 0.0451 | 0.693 | 93.2% |
+| GPTQ + QAT | selection | **0.0289** | **0.276** | **94.0%** |
+
+- QAT lowered mean KL by 37% and p99 KL by 62% relative to GPTQ alone.
+- QAT kept step 550, which had the lowest selection-trace KL: 0.02897, against 0.02912 at step 600.
+- The quantized weights total 10.69 GiB, or 10.98 GiB with the low-rank factors.
+- These numbers can't be compared directly with release 0.2. Its PyTorch export isn't distributed, so it can't be scored on these traces. The M6 gate in step 4 below makes that comparison.
 
 ## 1. Rent a machine
 
