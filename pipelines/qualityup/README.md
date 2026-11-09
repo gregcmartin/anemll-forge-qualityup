@@ -9,7 +9,7 @@ Measured cost on M6 (whole build, against release 0.2 with the same drafter and 
 - prefill 3–4% slower, where no change was expected;
 - 21.6 GB total at the 32K cap with the body-only `all3` drafter. The per-layer estimate was 22.4 GB, from release 0.2.1's 19.3 GB.
 
-**Status: trained, converted, gated and published on 9 November 2026.** The M6 KL-512 gate passed: mean KL 0.0500 against 0.0515 and top-1 agreement 91.75% against 91.42%. Only the top-1 gain is statistically significant. Weights: [gregcmartin/anemll-forge-qwen3.8-27B-qualityup](https://huggingface.co/gregcmartin/anemll-forge-qwen3.8-27B-qualityup), revision `d38a68e73946c788f4c616cbc047a2e671b55931`.
+**Status: trained, converted, gated and published on 9 November 2026.** The M6 KL-512 gate passed: mean KL 0.0500 against 0.0515 and top-1 agreement 91.75% against 91.42%. Only the top-1 gain is statistically significant. Weights: [gregcmartin/anemll-forge-qwen3.8-27B-qualityup](https://huggingface.co/gregcmartin/anemll-forge-qwen3.8-27B-qualityup), revision `2bcb0b930f4188a21897f5b4005acc223d148a54`, with the quantized export under `export/qualityup_full/`.
 
 ## Training run, 9 November 2026
 
