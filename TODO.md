@@ -32,7 +32,7 @@ Prefill is sequential through tokens, so only a layer pipeline can use both: the
 
 ### 6. Drafter on the GPU
 
-A decode cycle is 98% ANE work in sequence (8K: 114 ms = drafter 15.3 + verify 96.6 + sampling 1.9 + host 0.6). The drafter package already runs on the GPU (`COREAI_DRAFTER_COMPUTE=gpu`), but `forge.py serve` forces `ane`: allow the override and measure draft time, `DRAFT_GAP_MS` stalls, acceptance and power (at most 3 to 13% of decode). In prefill the drafter reads the prompt after each target block (about 10% of prefill, estimated); on the GPU it could overlap the next block.
+A decode cycle is 98% ANE work in sequence (8K: 114 ms = drafter 15.3 + verify 96.6 + sampling 1.9 + host 0.6). **M6 result, 8 November 2026:** an isolated direct GPU run of the same DFlash2 package was much slower (about 240 ms per draft cycle versus 15 ms on ANE); short coding/prose decode fell from 42.2/25.1 to 13.5/8.0 tok/s, and prefill also slowed. Keep ANE drafting for this release. The GPU cache specialization was removed and the ANE drafter recompiled after the probe. Revisit only if the GPU implementation or package changes substantially.
 
 ### 7. Build only what is needed
 

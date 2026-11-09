@@ -28,13 +28,15 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ngram_draft import NgramDrafter, TokenHistory  # noqa: E402
+from ane_compile_mode import detect_soc  # noqa: E402
 
 MODEL_ID = "qwen38-27b-ane"
-# The drafter's ANE call stalls (300-700 ms, a few per 100 cycles, the next verify too) when it is submitted
-# within ~2 ms of the target verify's return: greedy leaves ~1.5 ms of host work there, sampling ~6 ms. A 3 ms
-# minimum gap removes the stalls (M6, Core AI target + drafter, 16K greedy, 4 runs each: 10 drafter + 4 verify
-# stalls vs none; historical drafter_gap_test.py harness, not distributed).
-DRAFT_GAP = float(os.environ.get("DRAFT_GAP_MS", "3")) / 1e3
+# Earlier M6 greedy runs observed 300-700 ms dispatch stalls with gaps under 3 ms.
+# Paired Qwen3.8-27B release-0.2 runs on the current server showed that 1 ms keeps
+# those stalls away while improving decode 2-3%; 0 ms did not improve request time.
+# Keep the established 3 ms default on other chips until measured there.
+_default_draft_gap_ms = "1" if detect_soc().klass == "m6" else "3"
+DRAFT_GAP = float(os.environ.get("DRAFT_GAP_MS", _default_draft_gap_ms)) / 1e3
 # Thinking budget: a reasoning that reaches its budget without "</think>" is closed with Qwen's budget phrase and the
 # answer follows (the quantized model can deliberate past pi's 16K maxTokens: 2026-09-28, 16384 tokens of thinking,
 # no answer). ANSWER_RESERVE tokens of max_tokens stay for the answer.

@@ -6,6 +6,7 @@
 > - Sampling and greedy acceptance run top-k on FP16 rows.
 > - Text is detokenized incrementally, which also fixes streamed U+FFFD for multi-byte characters.
 > - The drafter runs top-k on FP16 rows and queues its context lazily.
+> - On M6, the DFlash2 dispatch gap defaults to the measured 1 ms; other chips retain 3 ms.
 >
 > **Status:** tested end to end on a 32 GB M6 Mac mini with the release 0.2 model and DFlash2. See the measured comparison below. Earlier estimates and the analysis are in [docs/OPTIMIZATION_M6_MINI_2026-11-08.md](docs/OPTIMIZATION_M6_MINI_2026-11-08.md). The upstream README follows the fork-specific section.
 
@@ -27,6 +28,21 @@ Prefill improved **1.9–2.1%** in these tests, and complete requests were **3.7
 The exact same prompt bytes were used in each matched trial. Requests were greedy (`temperature=0`, `top_p=1`, presence penalty, DRY and min-p all zero, thinking off), with no prompt-cache reuse and one client at a time. Both runtimes used the same authenticated SSH forward to the loopback API; the model was warmed, and client wall times include the forward. The upstream run was collected earlier the same day, so this is a sequential comparison rather than an interleaved or controlled thermal study. The per-trial [numeric data](benchmarks/m6-mini-2026-11-08/trials.csv) and [medians](benchmarks/m6-mini-2026-11-08/summary.csv) include prompt hashes, active context entries and lookup counts.
 
 Seven of twelve full greedy responses were byte-identical. Five differed; one focused fork run with prompt lookup disabled also differed from upstream, so these results do not isolate the cause to lookup. Both runtimes passed 5/9 bounded answer checks. The fork passed 19/21 executable coding checks, versus 20/21 upstream: both failed a rolling-median function, and the fork failed one additional case. This small suite does not demonstrate quality equivalence. The production M6 service was restored to Splash Q6 after testing.
+
+### Follow-up: M6 DFlash2 dispatch gap
+
+We tested the same release 0.2 weights, DFlash2 Core AI package, 48K context cap, six-token prompt lookup, and greedy prompts with only the M6 drafter dispatch gap changed from 3 ms to 1 ms. The source change selects 1 ms on M6 and retains 3 ms on other chips. Medians of three fresh-prompt, 256-output-token trials per workload:
+
+| Workload | Prefill tok/s, 3 → 1 ms | Decode tok/s, 3 → 1 ms | Full request seconds, 3 → 1 ms | Decode change |
+| --- | ---: | ---: | ---: | ---: |
+| 2K prose | 304.8 → 305.5 | 23.65 → 24.32 | 17.59 → 17.34 | +2.85% |
+| 2K coding | 308.4 → 309.3 | 51.46 → 52.86 | 11.79 → 11.61 | +2.73% |
+| 32K prose | 280.0 → 279.5 | 20.02 → 20.47 | 130.54 → 130.43 | +2.29% |
+| 32K coding | 278.9 → 278.9 | 33.43 → 34.10 | 125.29 → 125.58 | +2.01% |
+
+The 2K complete requests were 1.45–1.60% shorter. At 32K, prefill dominates: the prose request was 0.09% shorter and the coding request 0.23% longer. All 12 responses were byte-identical to the 3 ms fork run. Both runs passed the same 5/9 bounded answer checks and 19/21 executable coding checks. The new run again had 18/18 fully ANE packages, measured ANE activity, no new swapouts, and a verified return to the production Splash service. The [per-trial numbers](benchmarks/m6-mini-2026-11-08/gap1-trials.csv) and [medians](benchmarks/m6-mini-2026-11-08/gap1-summary.csv) include prompt hashes and cycle counts. These are sequential runs on one M6 Mac mini; the short paired A/B and one 32K paired A/B in the [optimization review](docs/OPTIMIZATION_M6_MINI_2026-11-08.md) independently found about 2–3% decode gain.
+
+We also checked two alternatives before the rerun. A zero millisecond gap brought less than 1% further decode gain and slightly worse complete request times in the short paired runs. A four-token prompt lookup threshold was neutral for coding and slower for prose. Moving the same DFlash2 drafter to the GPU made its call about 240 ms instead of about 15 ms on the ANE, so the drafter remains on the ANE. The GPU cache entry was cleared and the ANE drafter recompiled before the full rerun. No weights or quantization changed.
 
 **A research project for inference of large dense language models on the M6 Apple Neural Engine.** ANEMLL Forge shares inference code, quantization and conversion workflows, experiments, and lessons about Core AI, Core ML, compiler behavior, and ANE architecture.
 
